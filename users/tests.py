@@ -20,7 +20,9 @@ class TestUsers(TestCase):
             "first_name": "firstname2",
             "last_name": "lastname2",
             "username": "username2",
-            "password": "testpwd2"
+            "password": "testpwd2",
+            "email": "email2"
+
         })
         self.assertEqual(response.status_code, 200)
 

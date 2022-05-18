@@ -18,9 +18,11 @@ class RegisterUserView(GenericAPIView):
         validated_data = request.serializer.validated_data
 
         user = User.objects.create(
+
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],
             username=validated_data['username'],
+            email=validated_data['email'],
             is_superuser=True,
             is_staff=True
         )
