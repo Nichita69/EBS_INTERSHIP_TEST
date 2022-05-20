@@ -6,7 +6,7 @@ class Task(models.Model):
     title = models.CharField(max_length=100, db_index=True)
     description = models.TextField()
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    status = models.BooleanField(default=False)
+    is_completed = models.BooleanField(default=False)
 
 
 class Comment(models.Model):

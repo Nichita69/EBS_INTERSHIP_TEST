@@ -1,6 +1,9 @@
+from django.contrib.auth.models import User
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.mixins import ListModelMixin, RetrieveModelMixin, UpdateModelMixin, DestroyModelMixin
+from rest_framework.serializers import Serializer
+from rest_framework.status import HTTP_200_OK
 from rest_framework.viewsets import GenericViewSet
 from rest_framework import filters
 
@@ -11,7 +14,8 @@ from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from task.serializers import TaskSerializer, CommentSerializer
+from task.serializers import TaskSerializer, CommentSerializer, AssignTaskToUser, CreateTaskSerializer, \
+    ListTaskSerializer, CreateCommentSerializer
 from django.shortcuts import get_object_or_404
 
 
@@ -53,7 +57,14 @@ from django.shortcuts import get_object_or_404
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     queryset = Comment.objects.all()
-    permission_classes = (IsAuthenticated, )
+    permission_classes = (IsAuthenticated,)
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return CreateCommentSerializer
+        else:
+            return super(CommentViewSet, self).get_serializer_class()
+
 
     @serialize_decorator(CommentSerializer)
     def create(self, request, *args, **kwargs):
@@ -71,7 +82,7 @@ class CommentViewSet(viewsets.ModelViewSet):
             message='Trebuesahranimcopaci',
             from_email=EMAIL_HOST_USER
         )
-        return Response(CommentSerializer(comment).data)
+        return Response(comment.id)
 
 
 class TaskViewSet(ListModelMixin, RetrieveModelMixin, DestroyModelMixin, UpdateModelMixin, GenericViewSet):
@@ -81,7 +92,15 @@ class TaskViewSet(ListModelMixin, RetrieveModelMixin, DestroyModelMixin, UpdateM
     filter_backends = [filters.SearchFilter]
     search_fields = ['title']
 
-    @serialize_decorator(TaskSerializer)
+    def get_serializer_class(self):
+        if self.action == "create":
+            return CreateTaskSerializer
+        elif self.action == "list":
+            return ListTaskSerializer
+        else:
+            return super(TaskViewSet, self).get_serializer_class()
+
+    @serialize_decorator(CreateTaskSerializer)
     def create(self, request):
         validated_data = request.serializer.validated_data
 
@@ -99,7 +118,7 @@ class TaskViewSet(ListModelMixin, RetrieveModelMixin, DestroyModelMixin, UpdateM
             from_email=EMAIL_HOST_USER
         )
 
-        return Response(TaskSerializer(task).data)
+        return Response(task.id)
 
     @action(detail=False, methods=['get'], url_path='my-tasks')
     def my_tasks(self, request, *args, **kwargs):
@@ -107,40 +126,46 @@ class TaskViewSet(ListModelMixin, RetrieveModelMixin, DestroyModelMixin, UpdateM
         tasks = Task.objects.filter(user=user)
         return Response(TaskSerializer(tasks, many=True).data)
 
+    @action(detail=True, methods=['patch'], serializer_class=AssignTaskToUser, url_path='assign-task-to-user')
+    def assign_task_to_user(self, request, *args, **kwargs):
+        task = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = serializer.validated_data
+        user = User.objects.get(id=validated_data["user"].id)
+        task.user = user
+        task.save()
+        user.email_user(
+            subject='Noroc taska bila naznacina you',
+            message='githup hello',
+            from_email=EMAIL_HOST_USER
+        )
+        return Response(TaskSerializer(task).data)
+
     @action(detail=False, methods=['get'], url_path='completed-tasks')
     def completed_tasks(self, request, *args, **kwargs):
-        tasks = Task.objects.filter(status=True)
+        tasks = Task.objects.filter(is_completed=True)
         return Response(TaskSerializer(tasks, many=True).data)
 
-    @action(detail=True, methods=['patch'], url_path='complete')
+    @action(detail=True, methods=['patch'], serializer_class=Serializer, url_path='complete')
     def complete(self, request, *args, **kwargs):
         task = self.get_object()
-        task.status = True
+        task.is_completed = True
         task.save()
-        comments = task.comment_set.all()
-        users = []
-        for comment in comments:
-            users.append(comment.user)
-        users = set(users)
+
+        users = User.objects.filter(comment__task_id=task.id).distinct()
+
         for user in users:
             user.email_user(
                 subject='Comennted task',
                 message='Hello my name is zuzi',
                 from_email=EMAIL_HOST_USER
             )
-        return Response(TaskSerializer(task).data)
 
-    @serialize_decorator(TaskSerializer)
-    def partial_update(self, request, *args, **kwargs):
-        response = super(TaskViewSet, self).partial_update(request, *args, **kwargs)
+        return Response({"status": HTTP_200_OK})
+
+    @action(detail=True, methods=['get'], serializer_class=Serializer, url_path="task_comments")
+    def task_comments(self, request, *args, **kwargs):
         task = self.get_object()
-
-        task.user.email_user(
-            subject='cum viata omului',
-            message='a venit acest task',
-            from_email=EMAIL_HOST_USER
-        )
-
-        return response
-
-
+        comments = Comment.objects.filter(task=task)
+        return Response(CommentSerializer(comments, many=True).data)
